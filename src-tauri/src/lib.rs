@@ -4,6 +4,19 @@ mod input_hook;
 mod permissions;
 mod tray;
 
+#[tauri::command]
+fn toggle_autostart(app: tauri::AppHandle, enabled: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if enabled {
+        let _ = autostart.enable();
+        log::info!("Auto-start enabled");
+    } else {
+        let _ = autostart.disable();
+        log::info!("Auto-start disabled");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -12,11 +25,16 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .invoke_handler(tauri::generate_handler![
             hit_test::update_cat_bbox,
             config::get_config,
             config::set_config,
             config::update_position,
+            toggle_autostart,
         ])
         .setup(move |app| {
             if accessibility_ok {
