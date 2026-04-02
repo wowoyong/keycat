@@ -31,7 +31,7 @@ impl Default for AppConfig {
             cat_brightness: 100.0,
             background_color: "#00000000".into(),
             size: "medium".into(),
-            position: (1720.0, 880.0),
+            position: (-1.0, -1.0), // -1 = 자동 배치 (화면 우하단)
             monitor: None,
             auto_start: false,
         }

@@ -45,8 +45,21 @@ async function init() {
   canvas.height = currentSize;
   await appWindow.setSize(new LogicalSize(currentSize, currentSize));
 
-  // 위치 적용
-  await appWindow.setPosition(new LogicalPosition(config.position[0], config.position[1]));
+  // 위치 적용 — 기본값(1720,880)이면 화면 우하단 자동 계산
+  const { currentMonitor } = await import("@tauri-apps/api/window");
+  const monitor = await currentMonitor();
+  let posX = config.position[0];
+  let posY = config.position[1];
+  if (monitor) {
+    const maxX = monitor.size.width / (monitor.scaleFactor ?? 1) - currentSize;
+    const maxY = monitor.size.height / (monitor.scaleFactor ?? 1) - currentSize;
+    // 화면 밖이면 우하단으로 재배치
+    if (posX > maxX || posY > maxY || posX < 0 || posY < 0) {
+      posX = maxX - 20;
+      posY = maxY - 60;
+    }
+  }
+  await appWindow.setPosition(new LogicalPosition(posX, posY));
   await updateWindowPosition();
 
   // 색상 적용

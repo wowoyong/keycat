@@ -22,9 +22,7 @@
         "decorations": false,
         "alwaysOnTop": true,
         "resizable": false,
-        "skipTaskbar": true,
-        "x": 1720,
-        "y": 880
+        "skipTaskbar": true
       }
     ],
     "security": {
