@@ -49,55 +49,70 @@ const CURSOR_THROTTLE_MS: u64 = 33; // ~30Hz
 
 pub fn start_input_listener(handle: AppHandle) {
     std::thread::spawn(move || {
-        let result = listen(move |event: Event| {
-            match event.event_type {
-                EventType::KeyPress(key) => {
-                    let payload = KeyEvent {
-                        event_type: "keydown".into(),
-                        key: format!("{:?}", key),
-                        side: classify_key_side(&key).into(),
-                    };
-                    let _ = handle.emit("key-event", payload);
-                }
-                EventType::KeyRelease(key) => {
-                    let payload = KeyEvent {
-                        event_type: "keyup".into(),
-                        key: format!("{:?}", key),
-                        side: classify_key_side(&key).into(),
-                    };
-                    let _ = handle.emit("key-event", payload);
-                }
-                EventType::ButtonPress(btn) => {
-                    let button = format!("{:?}", btn).to_lowercase();
-                    let _ = handle.emit("mouse-event", MouseEvent {
-                        event_type: "mousedown".into(),
-                        button,
-                    });
-                }
-                EventType::ButtonRelease(btn) => {
-                    let button = format!("{:?}", btn).to_lowercase();
-                    let _ = handle.emit("mouse-event", MouseEvent {
-                        event_type: "mouseup".into(),
-                        button,
-                    });
-                }
-                EventType::MouseMove { x, y } => {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64;
-                    let last = LAST_CURSOR_EMIT.load(std::sync::atomic::Ordering::Relaxed);
-                    if now - last >= CURSOR_THROTTLE_MS {
-                        LAST_CURSOR_EMIT.store(now, std::sync::atomic::Ordering::Relaxed);
-                        let _ = handle.emit("cursor-event", CursorEvent { x, y });
-                        crate::hit_test::check_cursor_hit(&handle, x, y);
+        let mut retries = 0;
+        const MAX_RETRIES: u32 = 3;
+
+        loop {
+            let handle_clone = handle.clone();
+            let result = listen(move |event: Event| {
+                match event.event_type {
+                    EventType::KeyPress(key) => {
+                        let payload = KeyEvent {
+                            event_type: "keydown".into(),
+                            key: format!("{:?}", key),
+                            side: classify_key_side(&key).into(),
+                        };
+                        let _ = handle_clone.emit("key-event", payload);
                     }
+                    EventType::KeyRelease(key) => {
+                        let payload = KeyEvent {
+                            event_type: "keyup".into(),
+                            key: format!("{:?}", key),
+                            side: classify_key_side(&key).into(),
+                        };
+                        let _ = handle_clone.emit("key-event", payload);
+                    }
+                    EventType::ButtonPress(btn) => {
+                        let button = format!("{:?}", btn).to_lowercase();
+                        let _ = handle_clone.emit("mouse-event", MouseEvent {
+                            event_type: "mousedown".into(),
+                            button,
+                        });
+                    }
+                    EventType::ButtonRelease(btn) => {
+                        let button = format!("{:?}", btn).to_lowercase();
+                        let _ = handle_clone.emit("mouse-event", MouseEvent {
+                            event_type: "mouseup".into(),
+                            button,
+                        });
+                    }
+                    EventType::MouseMove { x, y } => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64;
+                        let last = LAST_CURSOR_EMIT.load(std::sync::atomic::Ordering::Relaxed);
+                        if now - last >= CURSOR_THROTTLE_MS {
+                            LAST_CURSOR_EMIT.store(now, std::sync::atomic::Ordering::Relaxed);
+                            let _ = handle_clone.emit("cursor-event", CursorEvent { x, y });
+                            crate::hit_test::check_cursor_hit(&handle_clone, x, y);
+                        }
+                    }
+                    EventType::Wheel { .. } => {}
                 }
-                EventType::Wheel { .. } => {}
+            });
+
+            // rdev::listen()은 성공 시 영원히 블로킹, Err만 반환됨
+            if let Err(e) = result {
+                retries += 1;
+                log::error!("rdev listen error (attempt {}/{}): {:?}", retries, MAX_RETRIES, e);
+                if retries >= MAX_RETRIES {
+                    log::error!("Input hook failed after {} retries, giving up", MAX_RETRIES);
+                    let _ = handle.emit("input-hook-failed", "max retries exceeded");
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
             }
-        });
-        if let Err(e) = result {
-            log::error!("rdev listen error: {:?}", e);
         }
     });
 }
