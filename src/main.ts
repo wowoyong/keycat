@@ -117,3 +117,73 @@ canvas.addEventListener("mousedown", async (e) => {
     x: windowX, y: windowY, width: SIZE, height: SIZE,
   });
 })();
+
+// 트레이 메뉴 이벤트
+listen<string>("tray-action", async (e) => {
+  const action = e.payload;
+  switch (action) {
+    case "reset_position": {
+      // 우하단으로 이동
+      const { currentMonitor } = await import("@tauri-apps/api/window");
+      const monitor = await currentMonitor();
+      if (monitor) {
+        const x = monitor.size.width - SIZE - 20;
+        const y = monitor.size.height - SIZE - 60;
+        await appWindow.setPosition(new (await import("@tauri-apps/api/dpi")).LogicalPosition(x, y));
+        await updateWindowPosition();
+        await invoke("update_cat_bbox", { x: windowX, y: windowY, width: SIZE, height: SIZE });
+        await invoke("update_position", { x: windowX, y: windowY });
+      }
+      break;
+    }
+    case "size_small":
+    case "size_medium":
+    case "size_large": {
+      const sizeMap: Record<string, number> = {
+        size_small: 150,
+        size_medium: 200,
+        size_large: 300,
+      };
+      const newSize = sizeMap[action];
+      canvas.width = newSize;
+      canvas.height = newSize;
+      const { LogicalSize } = await import("@tauri-apps/api/dpi");
+      await appWindow.setSize(new LogicalSize(newSize, newSize));
+      // SIZE는 현재 const이므로 향후 리팩토링에서 동적으로 변경
+      markDirty();
+      break;
+    }
+    // color_cat, color_bg는 Rust 트레이에서 직접 팝업 창을 열음 (Task 10)
+    default:
+      break;
+  }
+});
+
+// 이전 색상 (cancel 복원용)
+let prevHue = 0;
+let prevSat = 100;
+let prevBright = 100;
+
+// 색상 프리뷰 (실시간 반영)
+listen<{ hue: number; saturate: number; brightness: number }>("color-preview", (e) => {
+  canvas.style.filter = `hue-rotate(${e.payload.hue}deg) saturate(${e.payload.saturate}%) brightness(${e.payload.brightness}%)`;
+});
+
+// 색상 적용
+listen<{ hue: number; saturate: number; brightness: number }>("color-apply", async (e) => {
+  prevHue = e.payload.hue;
+  prevSat = e.payload.saturate;
+  prevBright = e.payload.brightness;
+  canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+  // 설정 저장
+  const config = await invoke<any>("get_config");
+  config.cat_hue = prevHue;
+  config.cat_saturate = prevSat;
+  config.cat_brightness = prevBright;
+  await invoke("set_config", { config });
+});
+
+// 색상 취소
+listen("color-cancel", () => {
+  canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+});

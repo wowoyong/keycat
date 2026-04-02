@@ -2,6 +2,7 @@ mod config;
 mod hit_test;
 mod input_hook;
 mod permissions;
+mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,8 @@ pub fn run() {
             } else {
                 log::warn!("Input hook skipped - no accessibility permission");
             }
+            tray::setup_tray(app.handle())?;
+            log::info!("Tray menu created");
             Ok(())
         })
         .run(tauri::generate_context!())
