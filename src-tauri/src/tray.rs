@@ -44,7 +44,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("KeyCat")
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
-                "quit" => std::process::exit(0),
+                "quit" => app.exit(0),
                 "toggle_visibility" => {
                     if let Some(win) = app.get_webview_window("main") {
                         if win.is_visible().unwrap_or(false) {

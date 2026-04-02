@@ -19,6 +19,7 @@ let windowY = 0;
 let prevHue = 0;
 let prevSat = 100;
 let prevBright = 100;
+let prevBgColor = "#00000000";
 
 async function updateWindowPosition() {
   const pos = await appWindow.outerPosition();
@@ -32,6 +33,7 @@ async function init() {
     cat_hue: number;
     cat_saturate: number;
     cat_brightness: number;
+    background_color: string;
     size: string;
     position: [number, number];
   }>("get_config");
@@ -52,6 +54,8 @@ async function init() {
   prevSat = config.cat_saturate;
   prevBright = config.cat_brightness;
   canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+  prevBgColor = config.background_color ?? "#00000000";
+  document.body.style.backgroundColor = prevBgColor;
 
   // bbox 등록
   await invoke("update_cat_bbox", {
@@ -208,27 +212,44 @@ listen<string>("tray-action", async (e) => {
 });
 
 // 색상 프리뷰 (실시간 반영)
-listen<{ hue: number; saturate: number; brightness: number }>("color-preview", (e) => {
-  canvas.style.filter = `hue-rotate(${e.payload.hue}deg) saturate(${e.payload.saturate}%) brightness(${e.payload.brightness}%)`;
+listen<{ target: string; hue: number; saturate: number; brightness: number }>("color-preview", (e) => {
+  if (e.payload.target === "color_bg") {
+    // background color preview: use brightness as opacity-like effect via rgba background
+    const alpha = Math.round((e.payload.brightness / 100) * 255).toString(16).padStart(2, "0");
+    document.body.style.backgroundColor = `#000000${alpha}`;
+  } else {
+    canvas.style.filter = `hue-rotate(${e.payload.hue}deg) saturate(${e.payload.saturate}%) brightness(${e.payload.brightness}%)`;
+  }
 });
 
 // 색상 적용
-listen<{ hue: number; saturate: number; brightness: number }>("color-apply", async (e) => {
-  prevHue = e.payload.hue;
-  prevSat = e.payload.saturate;
-  prevBright = e.payload.brightness;
-  canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
-  // 설정 저장
+listen<{ target: string; hue: number; saturate: number; brightness: number }>("color-apply", async (e) => {
   const config = await invoke<any>("get_config");
-  config.cat_hue = prevHue;
-  config.cat_saturate = prevSat;
-  config.cat_brightness = prevBright;
+  if (e.payload.target === "color_bg") {
+    const alpha = Math.round((e.payload.brightness / 100) * 255).toString(16).padStart(2, "0");
+    prevBgColor = `#000000${alpha}`;
+    document.body.style.backgroundColor = prevBgColor;
+    config.background_color = prevBgColor;
+  } else {
+    prevHue = e.payload.hue;
+    prevSat = e.payload.saturate;
+    prevBright = e.payload.brightness;
+    canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+    config.cat_hue = prevHue;
+    config.cat_saturate = prevSat;
+    config.cat_brightness = prevBright;
+  }
+  // 설정 저장
   await invoke("set_config", { config });
 });
 
 // 색상 취소
-listen("color-cancel", () => {
-  canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+listen<{ target: string }>("color-cancel", (e) => {
+  if (e.payload.target === "color_bg") {
+    document.body.style.backgroundColor = prevBgColor;
+  } else {
+    canvas.style.filter = `hue-rotate(${prevHue}deg) saturate(${prevSat}%) brightness(${prevBright}%)`;
+  }
 });
 
 // 입력 훅 실패 시 알림
