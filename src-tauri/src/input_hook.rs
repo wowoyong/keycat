@@ -90,6 +90,7 @@ pub fn start_input_listener(handle: AppHandle) {
                     if now - last >= CURSOR_THROTTLE_MS {
                         LAST_CURSOR_EMIT.store(now, std::sync::atomic::Ordering::Relaxed);
                         let _ = handle.emit("cursor-event", CursorEvent { x, y });
+                        crate::hit_test::check_cursor_hit(&handle, x, y);
                     }
                 }
                 EventType::Wheel { .. } => {}

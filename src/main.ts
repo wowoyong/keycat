@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { drawCat, createDefaultState } from "./sprites";
 import { getEyeDirection } from "./eye-consumer";
 import { AnimationLoop, BlinkScheduler } from "./animation";
@@ -96,3 +97,23 @@ document.addEventListener("visibilitychange", () => {
     loop.start();
   }
 });
+
+// 드래그 지원
+canvas.addEventListener("mousedown", async (e) => {
+  if (e.button === 0) {
+    await appWindow.startDragging();
+    await updateWindowPosition();
+    await invoke("update_cat_bbox", {
+      x: windowX, y: windowY, width: SIZE, height: SIZE,
+    });
+    await invoke("update_position", { x: windowX, y: windowY });
+  }
+});
+
+// 초기 bbox 등록
+(async () => {
+  await updateWindowPosition();
+  await invoke("update_cat_bbox", {
+    x: windowX, y: windowY, width: SIZE, height: SIZE,
+  });
+})();
