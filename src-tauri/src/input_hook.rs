@@ -1,5 +1,9 @@
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Serialize)]
@@ -21,9 +25,12 @@ pub struct CursorEvent {
     pub y: f64,
 }
 
+#[cfg(target_os = "macos")]
 static LAST_CURSOR_EMIT: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "macos")]
 const CURSOR_THROTTLE_MS: u64 = 33;
 
+#[cfg(target_os = "macos")]
 fn classify_keycode_side(keycode: u16) -> &'static str {
     // macOS virtual keycodes
     // Left side: Q(12) W(13) E(14) R(15) T(17) A(0) S(1) D(2) F(3) G(5)
@@ -54,6 +61,7 @@ fn classify_keycode_side(keycode: u16) -> &'static str {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn start_input_listener(handle: AppHandle) {
     std::thread::spawn(move || {
         unsafe {
@@ -153,4 +161,9 @@ pub fn start_input_listener(handle: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn start_input_listener(_handle: AppHandle) {
+    log::warn!("Input hook not implemented for this platform");
 }
