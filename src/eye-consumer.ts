@@ -14,7 +14,7 @@ export function getEyeDirection(
   const dx = cursorX - catCenterX;
   const dy = cursorY - catCenterY;
 
-  if (Math.abs(dx) < 50 && Math.abs(dy) < 50) return "center";
+  if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return "center";
 
   const angle = Math.atan2(dy, dx);
   const idx = Math.round(angle / (Math.PI / 4)) & 7;

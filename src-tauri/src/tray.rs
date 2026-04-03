@@ -6,8 +6,8 @@ use tauri::{
 };
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let color_cat = MenuItemBuilder::with_id("color_cat", "Change Cat Color...").build(app)?;
-    let color_bg = MenuItemBuilder::with_id("color_bg", "Change Background...").build(app)?;
+    let color_cat = MenuItemBuilder::with_id("color_cat", "Body Color...").build(app)?;
+    let color_bg = MenuItemBuilder::with_id("color_bg", "Accent Color...").build(app)?;
 
     let sep1 = PredefinedMenuItem::separator(app)?;
 
@@ -69,9 +69,9 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                     let title = if picker_id == "color_cat" {
-                        "KeyCat - Cat Color"
+                        "KeyCat - Body Color"
                     } else {
-                        "KeyCat - Background"
+                        "KeyCat - Accent Color"
                     };
                     let _picker = tauri::WebviewWindowBuilder::new(
                         app,

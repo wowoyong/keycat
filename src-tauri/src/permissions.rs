@@ -12,7 +12,19 @@ pub fn check_and_request_accessibility() -> bool {
     false
 }
 
+/// 프롬프트 없이 현재 권한 상태만 체크
+#[cfg(target_os = "macos")]
+pub fn check_accessibility_silent() -> bool {
+    use macos_accessibility_client::accessibility;
+    accessibility::application_is_trusted()
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn check_and_request_accessibility() -> bool {
-    true // Windows/Linux는 별도 권한 불필요
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn check_accessibility_silent() -> bool {
+    true
 }

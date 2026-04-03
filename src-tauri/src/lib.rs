@@ -37,11 +37,31 @@ pub fn run() {
             toggle_autostart,
         ])
         .setup(move |app| {
+            // 투명 창에서 마우스 이벤트를 받으려면 명시적으로 설정 필요
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_ignore_cursor_events(false);
+            }
+
+            // 접근성 권한이 있으면 바로 시작, 없으면 백그라운드에서 대기 후 재시도
+            let handle_for_hook = app.handle().clone();
             if accessibility_ok {
-                input_hook::start_input_listener(app.handle().clone());
+                input_hook::start_input_listener(handle_for_hook);
                 log::info!("Input hook started");
             } else {
-                log::warn!("Input hook skipped - no accessibility permission");
+                log::warn!("Accessibility not granted yet, will retry in background");
+                std::thread::spawn(move || {
+                    // 5초마다 권한 체크, 최대 120초 대기
+                    for _ in 0..24 {
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        if permissions::check_accessibility_silent() {
+                            log::info!("Accessibility granted! Starting input hook");
+                            input_hook::start_input_listener(handle_for_hook);
+                            return;
+                        }
+                    }
+                    log::warn!("Gave up waiting for accessibility permission");
+                });
             }
             tray::setup_tray(app.handle())?;
             log::info!("Tray menu created");

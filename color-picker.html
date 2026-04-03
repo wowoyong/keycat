@@ -5,29 +5,37 @@
   <meta charset="UTF-8" />
   <title>KeyCat Color</title>
   <style>
-    body { font-family: system-ui; padding: 16px; background: #1a1a1a; color: #fff; }
-    .slider-group { margin-bottom: 12px; }
-    label { display: block; margin-bottom: 4px; font-size: 13px; }
+    body { font-family: system-ui; padding: 20px; background: #1a1a1a; color: #fff; }
+    .preview-area { display: flex; justify-content: center; margin-bottom: 16px; }
+    .preview-circle {
+      width: 50px; height: 50px; border-radius: 50%;
+      border: 2px solid #555; background: hsl(30, 30%, 95%);
+    }
+    .slider-group { margin-bottom: 14px; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; }
     input[type="range"] { width: 100%; }
     .value { float: right; font-size: 12px; color: #aaa; }
-    button { width: 100%; padding: 8px; margin-top: 8px; cursor: pointer;
+    button { width: 100%; padding: 10px; margin-top: 10px; cursor: pointer;
       border: none; border-radius: 4px; font-size: 14px; }
     .btn-ok { background: #FF8C00; color: #fff; }
     .btn-cancel { background: #333; color: #ccc; }
   </style>
 </head>
 <body>
-  <div class="slider-group">
-    <label>Hue <span class="value" id="hue-val">0</span></label>
-    <input type="range" id="hue" min="0" max="360" value="0" />
+  <div class="preview-area">
+    <div class="preview-circle" id="preview-circle"></div>
   </div>
   <div class="slider-group">
-    <label>Saturation <span class="value" id="sat-val">100</span></label>
-    <input type="range" id="sat" min="0" max="200" value="100" />
+    <label>색상 (Hue) <span class="value" id="hue-val">30</span></label>
+    <input type="range" id="hue" min="0" max="360" value="30" />
   </div>
   <div class="slider-group">
-    <label>Brightness <span class="value" id="bright-val">100</span></label>
-    <input type="range" id="bright" min="0" max="200" value="100" />
+    <label>채도 (Saturation) <span class="value" id="sat-val">30</span></label>
+    <input type="range" id="sat" min="0" max="100" value="30" />
+  </div>
+  <div class="slider-group">
+    <label>밝기 (Lightness) <span class="value" id="light-val">95</span></label>
+    <input type="range" id="light" min="20" max="95" value="95" />
   </div>
   <button class="btn-ok" id="btn-ok">Apply</button>
   <button class="btn-cancel" id="btn-cancel">Cancel</button>
