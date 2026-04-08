@@ -34,7 +34,8 @@ const peers = new Map<string, PeerState>();
 
 // --- Chat input ---
 let chatMode = false;
-let chatInput = "";
+const chatOverlay = document.getElementById("chat-overlay") as HTMLDivElement;
+const chatInputEl = document.getElementById("chat-input") as HTMLInputElement;
 
 // --- WebSocket ---
 let wsClient: WsClient | null = null;
@@ -160,20 +161,6 @@ const loop = new AnimationLoop(() => {
   state.breathPhase += 0.08;
   drawCat(ctx, state, currentSize);
 
-  // Draw chat input indicator
-  if (chatMode) {
-    const sc = currentSize / 300;
-    const fontSize = Math.max(11, 14 * sc);
-    ctx.font = `bold ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.textAlign = "center";
-    ctx.fillText(
-      chatInput ? `/${chatInput}▏` : "/▏",
-      currentSize / 2,
-      currentSize - 10 * sc,
-    );
-    ctx.textAlign = "start";
-  }
 });
 loop.start();
 loop.setFps(12);
@@ -200,36 +187,6 @@ function onActivity() {
 
 // --- Keyboard events ---
 listen<{ event_type: string; key: string; side: string }>("key-event", (e) => {
-  // Chat mode: capture key input
-  if (chatMode) {
-    if (e.payload.event_type === "keydown") {
-      const key = e.payload.key;
-      if (key === "Return") {
-        // Send chat
-        if (chatInput.trim() && wsClient?.isConnected()) {
-          wsClient.sendChat(chatInput.trim());
-        }
-        chatInput = "";
-        chatMode = false;
-      } else if (key === "Escape") {
-        chatInput = "";
-        chatMode = false;
-      } else if (key === "Delete") {
-        chatInput = chatInput.slice(0, -1);
-      } else if (key.length === 1 && chatInput.length < 30) {
-        chatInput += key;
-      }
-    }
-    return;
-  }
-
-  // Check for "/" to enter chat mode
-  if (e.payload.event_type === "keydown" && e.payload.key === "/" && wsClient?.isConnected()) {
-    chatMode = true;
-    chatInput = "";
-    return;
-  }
-
   if (e.payload.event_type === "keydown") {
     if (e.payload.side === "left") state.leftHand = "down";
     else if (e.payload.side === "right") state.rightHand = "down";
@@ -267,11 +224,46 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// Drag support
+// Drag support (single click = drag, double click = chat)
 canvas.addEventListener("mousedown", async (e) => {
-  if (e.button === 0) {
+  if (e.button === 0 && !chatMode) {
     await appWindow.startDragging();
   }
+});
+
+canvas.addEventListener("dblclick", () => {
+  if (!wsClient?.isConnected()) return;
+  openChatInput();
+});
+
+function openChatInput() {
+  chatMode = true;
+  chatOverlay.style.display = "block";
+  chatInputEl.value = "";
+  chatInputEl.focus();
+}
+
+function closeChatInput() {
+  chatMode = false;
+  chatOverlay.style.display = "none";
+  chatInputEl.blur();
+}
+
+chatInputEl.addEventListener("keydown", (e) => {
+  e.stopPropagation();
+  if (e.key === "Enter") {
+    const text = chatInputEl.value.trim();
+    if (text && wsClient?.isConnected()) {
+      wsClient.sendChat(text);
+    }
+    closeChatInput();
+  } else if (e.key === "Escape") {
+    closeChatInput();
+  }
+});
+
+chatInputEl.addEventListener("blur", () => {
+  closeChatInput();
 });
 
 // Window moved

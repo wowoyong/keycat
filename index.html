@@ -8,6 +8,11 @@
 </head>
 <body>
   <canvas id="cat-canvas" width="200" height="200" data-tauri-drag-region></canvas>
+  <div id="chat-overlay" style="display:none; position:absolute; bottom:8px; left:50%; transform:translateX(-50%);">
+    <input id="chat-input" type="text" maxlength="30" placeholder="메시지 입력..."
+      style="width:140px; padding:4px 8px; border:1px solid #ccc; border-radius:12px;
+      font-size:12px; background:rgba(255,255,255,0.95); outline:none; text-align:center;" />
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
