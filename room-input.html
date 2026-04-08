@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    label { font-size: 13px; color: #333; font-weight: 600; }
+    input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-align: center;
+      outline: none;
+    }
+    input:focus { border-color: #007aff; }
+    .buttons { display: flex; gap: 8px; justify-content: flex-end; }
+    button {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .join {
+      background: #007aff;
+      color: white;
+    }
+    .cancel {
+      background: #e5e5e5;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <label>Room Code</label>
+  <input id="code" type="text" maxlength="6" placeholder="ABCDEF" autofocus />
+  <div class="buttons">
+    <button class="cancel" id="cancel">Cancel</button>
+    <button class="join" id="join">Join</button>
+  </div>
+  <script type="module">
+    import { emit } from "https://unpkg.com/@tauri-apps/api@2/dist/esm/event.js";
+    import { getCurrentWindow } from "https://unpkg.com/@tauri-apps/api@2/dist/esm/window.js";
+
+    const input = document.getElementById("code");
+    const joinBtn = document.getElementById("join");
+    const cancelBtn = document.getElementById("cancel");
+    const win = getCurrentWindow();
+
+    async function join() {
+      const code = input.value.trim().toUpperCase();
+      if (code.length < 2) return;
+      await emit("room-join", code);
+      await win.close();
+    }
+
+    joinBtn.addEventListener("click", join);
+    cancelBtn.addEventListener("click", () => win.close());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") join();
+      if (e.key === "Escape") win.close();
+    });
+  </script>
+</body>
+</html>

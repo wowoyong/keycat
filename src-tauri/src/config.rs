@@ -12,32 +12,41 @@ pub struct MonitorInfo {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
-    pub cat_hue: f64,
-    pub cat_saturation: f64,
-    pub cat_lightness: f64,
-    pub accent_hue: f64,
-    pub accent_saturation: f64,
-    pub accent_lightness: f64,
+    pub cat_skin: String,
     pub size: String,
     pub position: (f64, f64),
     pub monitor: Option<MonitorInfo>,
     pub auto_start: bool,
+    // Legacy fields — ignored but kept for backwards compat with existing config files
+    #[serde(default)]
+    pub cat_hue: Option<f64>,
+    #[serde(default)]
+    pub cat_saturation: Option<f64>,
+    #[serde(default)]
+    pub cat_lightness: Option<f64>,
+    #[serde(default)]
+    pub accent_hue: Option<f64>,
+    #[serde(default)]
+    pub accent_saturation: Option<f64>,
+    #[serde(default)]
+    pub accent_lightness: Option<f64>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            schema_version: 1,
-            cat_hue: 0.0,
-            cat_saturation: 0.0,
-            cat_lightness: 100.0,
-            accent_hue: 12.0,
-            accent_saturation: 71.0,
-            accent_lightness: 78.0,
+            schema_version: 2,
+            cat_skin: "orange".into(),
             size: "medium".into(),
-            position: (-1.0, -1.0), // -1 = 자동 배치 (화면 우하단)
+            position: (-1.0, -1.0),
             monitor: None,
             auto_start: false,
+            cat_hue: None,
+            cat_saturation: None,
+            cat_lightness: None,
+            accent_hue: None,
+            accent_saturation: None,
+            accent_lightness: None,
         }
     }
 }

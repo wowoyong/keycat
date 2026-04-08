@@ -2,9 +2,15 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
-import { drawCat, createDefaultState } from "./sprites";
+import { drawCat, createDefaultState, preloadImages, setSkin, getSkin } from "./sprites";
 import { getEyeDirection } from "./eye-consumer";
 import { AnimationLoop, BlinkScheduler } from "./animation";
+import { WsClient } from "./ws-client";
+import { addChatBubble } from "./chat";
+import type { CatSkin } from "./sprites";
+import type { ServerMessage } from "./ws-client";
+
+const WS_URL = "ws://192.168.0.22:8765";
 
 const canvas = document.getElementById("cat-canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -12,25 +18,79 @@ const state = createDefaultState();
 const appWindow = getCurrentWindow();
 
 let currentSize = 200;
-let windowX = 0;   // physical pixels (from outerPosition)
-let windowY = 0;   // physical pixels
-let scaleFactor = 1; // monitor scale (physical/logical)
+let windowX = 0;
+let windowY = 0;
+let scaleFactor = 1;
 
-// 이전 색상 (cancel 복원용)
-let prevHue = 0;
-let prevSat = 0;
-let prevLight = 100;
-let prevAccentHue = 12;
-let prevAccentSat = 71;
-let prevAccentLight = 78;
+// --- Peer state ---
+interface PeerState {
+  skin: CatSkin;
+  x: number;
+  y: number;
+  active: boolean;
+  name: string;
+}
+const peers = new Map<string, PeerState>();
 
+// --- Chat input ---
+let chatMode = false;
+let chatInput = "";
+
+// --- WebSocket ---
+let wsClient: WsClient | null = null;
+
+function handleServerMessage(msg: ServerMessage) {
+  switch (msg.type) {
+    case "joined":
+      for (const user of msg.users) {
+        peers.set(user.userId, {
+          skin: (user.skin || "orange") as CatSkin,
+          x: user.x,
+          y: user.y,
+          active: user.active,
+          name: user.name,
+        });
+      }
+      break;
+    case "user_joined":
+      peers.set(msg.userId, {
+        skin: (msg.skin || "orange") as CatSkin,
+        x: 0.85,
+        y: 0.85,
+        active: false,
+        name: msg.name,
+      });
+      break;
+    case "user_left":
+      peers.delete(msg.userId);
+      break;
+    case "state":
+      if (peers.has(msg.userId)) {
+        const peer = peers.get(msg.userId)!;
+        peer.x = msg.x;
+        peer.y = msg.y;
+        peer.active = msg.active;
+        if (msg.skin) peer.skin = msg.skin as CatSkin;
+      }
+      break;
+    case "chat":
+      addChatBubble(msg.userId, msg.name, msg.text);
+      // Show own chat bubble too
+      if (wsClient && msg.userId === wsClient.getUserId()) {
+        state.chatText = msg.text;
+        setTimeout(() => { state.chatText = null; }, 5000);
+      }
+      break;
+  }
+}
+
+// --- Window position ---
 async function updateWindowPosition() {
   const pos = await appWindow.outerPosition();
   windowX = pos.x;
   windowY = pos.y;
 }
 
-// CGEventTap 좌표(논리 pixels)와 맞추기 위해 물리→논리 변환
 async function updateBbox() {
   await invoke("update_cat_bbox", {
     x: windowX / scaleFactor,
@@ -40,27 +100,28 @@ async function updateBbox() {
   });
 }
 
-// 설정 로드 및 적용
+// --- Send position to server ---
+function sendPositionToServer() {
+  if (!wsClient?.isConnected()) return;
+  const x = windowX / scaleFactor;
+  const y = windowY / scaleFactor;
+  wsClient.sendState(x, y, !state.isIdle);
+}
+
+// --- Init ---
 async function init() {
   const config = await invoke<{
-    cat_hue: number;
-    cat_saturation: number;
-    cat_lightness: number;
-    accent_hue: number;
-    accent_saturation: number;
-    accent_lightness: number;
+    cat_skin: string;
     size: string;
     position: [number, number];
   }>("get_config");
 
-  // 크기 적용
   const sizeMap: Record<string, number> = { small: 150, medium: 200, large: 300 };
   currentSize = sizeMap[config.size] ?? 200;
   canvas.width = currentSize;
   canvas.height = currentSize;
   await appWindow.setSize(new LogicalSize(currentSize, currentSize));
 
-  // 위치 적용 — 기본값(-1,-1)이면 화면 우하단 자동 계산
   const { currentMonitor, primaryMonitor, availableMonitors } = await import("@tauri-apps/api/window");
   let monitor = await currentMonitor();
   if (!monitor) monitor = await primaryMonitor();
@@ -70,66 +131,61 @@ async function init() {
   }
   let posX = config.position[0];
   let posY = config.position[1];
-  console.log("[KeyCat] monitor:", monitor?.name, monitor?.size, "scale:", monitor?.scaleFactor);
-  console.log("[KeyCat] config position:", posX, posY, "size:", currentSize);
   if (monitor) {
     scaleFactor = monitor.scaleFactor ?? 1;
     const scale = scaleFactor;
     const maxX = monitor.size.width / scale - currentSize;
     const maxY = monitor.size.height / scale - currentSize;
-    console.log("[KeyCat] maxX:", maxX, "maxY:", maxY);
-    // 화면 밖이거나 기본값(-1)이면 우하단으로 재배치
     if (posX < 0 || posY < 0 || posX > maxX || posY > maxY) {
       posX = maxX - 20;
       posY = maxY - 60;
     }
   } else {
-    // monitor를 못 가져온 경우 fallback
     posX = 1200;
     posY = 700;
   }
-  console.log("[KeyCat] final position:", posX, posY);
   await appWindow.setPosition(new LogicalPosition(posX, posY));
   await updateWindowPosition();
 
-  // 색상 적용
-  prevHue = config.cat_hue;
-  prevSat = config.cat_saturation;
-  prevLight = config.cat_lightness;
-  state.bodyColor = `hsl(${prevHue}, ${prevSat}%, ${prevLight}%)`;
-  prevAccentHue = config.accent_hue;
-  prevAccentSat = config.accent_saturation;
-  prevAccentLight = config.accent_lightness;
-  state.accentColor = `hsl(${prevAccentHue}, ${prevAccentSat}%, ${prevAccentLight}%)`;
+  const skin = (config.cat_skin || "orange") as CatSkin;
+  setSkin(skin);
 
-  // bbox 등록
   await updateBbox();
-
-  // 초기 렌더링
+  await preloadImages();
   drawCat(ctx, state, currentSize);
 }
 
-// 숨쉬기 애니메이션 때문에 매 프레임 렌더
+// --- Animation ---
 const loop = new AnimationLoop(() => {
   state.breathPhase += 0.08;
   drawCat(ctx, state, currentSize);
+
+  // Draw chat input indicator
+  if (chatMode) {
+    const sc = currentSize / 300;
+    const fontSize = Math.max(11, 14 * sc);
+    ctx.font = `bold ${fontSize}px -apple-system, "Segoe UI", sans-serif`;
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      chatInput ? `/${chatInput}▏` : "/▏",
+      currentSize / 2,
+      currentSize - 10 * sc,
+    );
+    ctx.textAlign = "start";
+  }
 });
 loop.start();
 loop.setFps(12);
 
-const blinker = new BlinkScheduler((frame) => {
-  if (state.isIdle) {
-    state.blinkFrame = frame;
-
-  }
-});
+const blinker = new BlinkScheduler(() => {});
 blinker.start();
 
+// --- Activity tracking ---
 let idleTimeout: number | null = null;
 
 function onActivity() {
   state.isIdle = false;
-  state.blinkFrame = 0;
   loop.setFps(30);
 
   if (idleTimeout) clearTimeout(idleTimeout);
@@ -137,13 +193,43 @@ function onActivity() {
     state.isIdle = true;
     state.leftHand = "up";
     state.rightHand = "up";
-    state.eyeDir = "center";
     loop.setFps(12);
-
+    sendPositionToServer();
   }, 3000);
 }
 
+// --- Keyboard events ---
 listen<{ event_type: string; key: string; side: string }>("key-event", (e) => {
+  // Chat mode: capture key input
+  if (chatMode) {
+    if (e.payload.event_type === "keydown") {
+      const key = e.payload.key;
+      if (key === "Return") {
+        // Send chat
+        if (chatInput.trim() && wsClient?.isConnected()) {
+          wsClient.sendChat(chatInput.trim());
+        }
+        chatInput = "";
+        chatMode = false;
+      } else if (key === "Escape") {
+        chatInput = "";
+        chatMode = false;
+      } else if (key === "Delete") {
+        chatInput = chatInput.slice(0, -1);
+      } else if (key.length === 1 && chatInput.length < 30) {
+        chatInput += key;
+      }
+    }
+    return;
+  }
+
+  // Check for "/" to enter chat mode
+  if (e.payload.event_type === "keydown" && e.payload.key === "/" && wsClient?.isConnected()) {
+    chatMode = true;
+    chatInput = "";
+    return;
+  }
+
   if (e.payload.event_type === "keydown") {
     if (e.payload.side === "left") state.leftHand = "down";
     else if (e.payload.side === "right") state.rightHand = "down";
@@ -154,6 +240,7 @@ listen<{ event_type: string; key: string; side: string }>("key-event", (e) => {
     else { state.leftHand = "up"; state.rightHand = "up"; }
   }
   onActivity();
+  sendPositionToServer();
 });
 
 listen<{ event_type: string; button: string }>("mouse-event", (e) => {
@@ -163,16 +250,13 @@ listen<{ event_type: string; button: string }>("mouse-event", (e) => {
     state.rightHand = "up";
   }
   onActivity();
+  sendPositionToServer();
 });
 
 listen<{ x: number; y: number }>("cursor-event", (e) => {
   const catCenterX = windowX / scaleFactor + currentSize / 2;
   const catCenterY = windowY / scaleFactor + currentSize * 0.35;
-  const newDir = getEyeDirection(e.payload.x, e.payload.y, catCenterX, catCenterY);
-  if (newDir !== state.eyeDir) {
-    state.eyeDir = newDir;
-
-  }
+  getEyeDirection(e.payload.x, e.payload.y, catCenterX, catCenterY);
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -183,26 +267,26 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// 드래그 지원
+// Drag support
 canvas.addEventListener("mousedown", async (e) => {
   if (e.button === 0) {
     await appWindow.startDragging();
   }
 });
 
-// 창 이동 완료 후 bbox + 설정 업데이트
+// Window moved
 appWindow.onMoved(async () => {
   await updateWindowPosition();
   await updateBbox();
   await invoke("update_position", { x: windowX / scaleFactor, y: windowY / scaleFactor });
+  sendPositionToServer();
 });
 
-// 트레이 메뉴 이벤트
+// --- Tray menu events ---
 listen<string>("tray-action", async (e) => {
   const action = e.payload;
   switch (action) {
     case "reset_position": {
-      // 우하단으로 이동
       const { currentMonitor } = await import("@tauri-apps/api/window");
       const monitor = await currentMonitor();
       if (monitor) {
@@ -229,11 +313,9 @@ listen<string>("tray-action", async (e) => {
       canvas.height = currentSize;
       await appWindow.setSize(new LogicalSize(currentSize, currentSize));
       drawCat(ctx, state, currentSize);
-      // 설정 저장
       const config = await invoke<any>("get_config");
       config.size = sizeNameMap[action];
       await invoke("set_config", { config });
-      // bbox 업데이트
       await updateWindowPosition();
       await updateBbox();
       break;
@@ -245,60 +327,46 @@ listen<string>("tray-action", async (e) => {
       await invoke("toggle_autostart", { enabled: cfg.auto_start });
       break;
     }
-    // color_cat, color_bg는 Rust 트레이에서 직접 팝업 창을 열음 (Task 10)
+    case "skin_orange":
+    case "skin_gray": {
+      const skin = action.replace("skin_", "") as CatSkin;
+      setSkin(skin);
+      if (wsClient) wsClient.updateSkin(skin);
+      drawCat(ctx, state, currentSize);
+      const cfg = await invoke<any>("get_config");
+      cfg.cat_skin = skin;
+      await invoke("set_config", { config: cfg });
+      break;
+    }
     default:
       break;
   }
 });
 
-// 색상 프리뷰 (실시간 반영)
-listen<{ target: string; hue: number; saturation: number; lightness: number }>("color-preview", (e) => {
-  if (e.payload.target === "color_bg") {
-    state.accentColor = `hsl(${e.payload.hue}, ${e.payload.saturation}%, ${e.payload.lightness}%)`;
-  } else {
-    state.bodyColor = `hsl(${e.payload.hue}, ${e.payload.saturation}%, ${e.payload.lightness}%)`;
-  }
+// --- Room events from tray ---
+listen<string>("room-join", (e) => {
+  const roomCode = e.payload;
+  if (!roomCode) return;
 
+  const userName = "KeyCat User";
+  wsClient = new WsClient(WS_URL, handleServerMessage);
+  wsClient.join(roomCode, userName, getSkin());
+
+  // Periodically send position
+  setInterval(() => sendPositionToServer(), 2000);
 });
 
-// 색상 적용
-listen<{ target: string; hue: number; saturation: number; lightness: number }>("color-apply", async (e) => {
-  const config = await invoke<any>("get_config");
-  if (e.payload.target === "color_bg") {
-    prevAccentHue = e.payload.hue;
-    prevAccentSat = e.payload.saturation;
-    prevAccentLight = e.payload.lightness;
-    state.accentColor = `hsl(${prevAccentHue}, ${prevAccentSat}%, ${prevAccentLight}%)`;
-    config.accent_hue = prevAccentHue;
-    config.accent_saturation = prevAccentSat;
-    config.accent_lightness = prevAccentLight;
-  } else {
-    prevHue = e.payload.hue;
-    prevSat = e.payload.saturation;
-    prevLight = e.payload.lightness;
-    state.bodyColor = `hsl(${prevHue}, ${prevSat}%, ${prevLight}%)`;
-    config.cat_hue = prevHue;
-    config.cat_saturation = prevSat;
-    config.cat_lightness = prevLight;
+listen<string>("room-leave", () => {
+  if (wsClient) {
+    wsClient.leave();
+    wsClient = null;
+    peers.clear();
   }
-
-  await invoke("set_config", { config });
 });
 
-// 색상 취소
-listen<{ target: string }>("color-cancel", (e) => {
-  if (e.payload.target === "color_bg") {
-    state.accentColor = `hsl(${prevAccentHue}, ${prevAccentSat}%, ${prevAccentLight}%)`;
-  } else {
-    state.bodyColor = `hsl(${prevHue}, ${prevSat}%, ${prevLight}%)`;
-  }
-
-});
-
-// 입력 훅 실패 시 알림
+// Input hook failure
 listen<string>("input-hook-failed", () => {
   console.error("Input hook failed - cat will be idle only");
-  // 향후: 트레이 알림 표시
 });
 
 init();
