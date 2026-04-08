@@ -50,27 +50,25 @@
     <button class="cancel" id="cancel">Cancel</button>
     <button class="join" id="join">Join</button>
   </div>
-  <script type="module">
-    import { emit } from "https://unpkg.com/@tauri-apps/api@2/dist/esm/event.js";
-    import { getCurrentWindow } from "https://unpkg.com/@tauri-apps/api@2/dist/esm/window.js";
-
+  <script>
     const input = document.getElementById("code");
     const joinBtn = document.getElementById("join");
     const cancelBtn = document.getElementById("cancel");
-    const win = getCurrentWindow();
 
     async function join() {
       const code = input.value.trim().toUpperCase();
       if (code.length < 2) return;
-      await emit("room-join", code);
-      await win.close();
+      await window.__TAURI__.event.emit("room-join", code);
+      await window.__TAURI__.window.getCurrentWindow().close();
     }
 
     joinBtn.addEventListener("click", join);
-    cancelBtn.addEventListener("click", () => win.close());
+    cancelBtn.addEventListener("click", () => {
+      window.__TAURI__.window.getCurrentWindow().close();
+    });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") join();
-      if (e.key === "Escape") win.close();
+      if (e.key === "Escape") window.__TAURI__.window.getCurrentWindow().close();
     });
   </script>
 </body>

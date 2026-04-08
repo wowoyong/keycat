@@ -32,6 +32,7 @@ export default defineConfig(async () => ({
       input: {
         main: "index.html",
         "color-picker": "color-picker.html",
+        "room-input": "room-input.html",
       },
     },
   },
