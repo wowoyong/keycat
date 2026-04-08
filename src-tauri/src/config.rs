@@ -37,7 +37,7 @@ impl Default for AppConfig {
         Self {
             schema_version: 2,
             cat_skin: "orange".into(),
-            size: "medium".into(),
+            size: "small".into(),
             position: (-1.0, -1.0),
             monitor: None,
             auto_start: false,
